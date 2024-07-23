@@ -1,0 +1,10 @@
+fastapi
+pydantic
+pandas
+numpy
+keras
+scikit-learn
+joblib
+uvicorn
+tensorflow
+h5py
