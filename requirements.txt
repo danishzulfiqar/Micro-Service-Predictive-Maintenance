@@ -8,3 +8,4 @@ joblib
 uvicorn
 tensorflow
 h5py
+shap
