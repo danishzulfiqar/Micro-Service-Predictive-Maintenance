@@ -329,7 +329,7 @@ def predict(request: PredictionRequest):
 
 
 # get last 15 minutes data to csv file
-@app.post("/{macAddress}/get_interval_data")
+@app.get("/{macAddress}/get_interval_data")
 def get_interval_data(macAddress: str):
     try:
         returnData = fetch_utilization_data(macAddress)
