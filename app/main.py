@@ -21,11 +21,11 @@ from pytz import timezone as pytz_timezone
 
 app = FastAPI()
 
-# Load the model
-model = load_model('./Models/Drill-14223-chenab_model.h5')
+# # Load the model
+# model = load_model('./Models/Drill-14223-chenab_model.h5')
 
-# Load the scaler
-scaler = joblib.load('./Models/Drill-14223-chenab_scaler.pkl')
+# # Load the scaler
+# scaler = joblib.load('./Models/Drill-14223-chenab_scaler.pkl')
 
 column_names = ['CT1', 'CT2', 'CT3', 'CT_Avg',
                 'total_current', 'therm_temp', 'vibration']
@@ -249,7 +249,20 @@ def fetch_utilization_data(mac, minutes):
 
 
 # Prediction function
-def predict_data(input_data: pd.DataFrame, model, scaler, column_names, maintenance_date: str):
+def predict_data(input_data: pd.DataFrame, column_names, maintenance_date: str, macAddress: str):
+
+    # Loading the model and scaler
+    # Location macAddress replace : with -
+    macAddressDir = macAddress.replace(":", "-")
+    print(macAddressDir)
+
+    # Load the model
+    model = load_model(f'./Models/{macAddressDir}/{macAddressDir}/model.h5')
+
+    # Load the scaler
+    scaler = joblib.load(
+        f'./Models/{macAddressDir}/{macAddressDir}/scaler.pkl')
+
     # Scale the input data
     input_data[column_names] = scaler.transform(input_data[column_names])
 
@@ -258,7 +271,6 @@ def predict_data(input_data: pd.DataFrame, model, scaler, column_names, maintena
 
     # Convert the predictions to binary
     pred = [1 if y >= 0.434683 else 0 for y in pred]
-
 
     predicted = pred
 
@@ -329,7 +341,7 @@ def predict(request: PredictionRequest):
 
         # Call helper function to make prediction and get response
         response_data = predict_data(
-            input_data, model, scaler, column_names, request.maintenance_date)
+            input_data, column_names, request.maintenance_date, "08:D1:F9:A7:4D:FC")
 
         return PredictionResponse(**response_data)
     except Exception as e:
@@ -370,20 +382,21 @@ def predict_machine_for_minutes(macAddress: str, minutes: int):
 
         input_data = input_data[[
             "CT1", "CT2", "CT3", "CT_Avg", "total_current", "therm_temp", "vibration"]]
-        
+
         # csv
         input_data.to_csv("chenab_input_data.csv", index=False)
 
         # Call helper function to make prediction and get response
 
         response_data = predict_data(
-            input_data, model, scaler, column_names, "01/01/21")
+            input_data, column_names, "01/01/21", macAddress)
 
         return {"message": f"Data: {response_data}"}
 
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
-    
+
+
 
 # end point to send zip file with new model and scaler
 # It will unzip the file, make new folder in model folder with name of zip file and save model and scaler in that folder
@@ -400,7 +413,8 @@ async def update_model(file: UploadFile = File(...)):
             f.write(await file.read())
 
         # Extract the contents of the ZIP file
-        extract_path = os.path.join("./Models", os.path.splitext(file.filename)[0])
+        extract_path = os.path.join(
+            "./Models", os.path.splitext(file.filename)[0])
         os.makedirs(extract_path, exist_ok=True)
         with zipfile.ZipFile(file_location, 'r') as zip_ref:
             zip_ref.extractall(extract_path)
@@ -408,10 +422,11 @@ async def update_model(file: UploadFile = File(...)):
         # Clean up the uploaded ZIP file
         os.remove(file_location)
 
-        return JSONResponse(content={"message": "Model updated successfully"}, status_code=200)
+        file_name_string = os.path.splitext(file.filename)[0]
+
+        return JSONResponse(content={"message": f"Model updated successfully with name {file_name_string}"}, status_code=200)
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
-
 
 
 # command
