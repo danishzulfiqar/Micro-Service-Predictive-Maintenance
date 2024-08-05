@@ -1,5 +1,7 @@
 import os
-from fastapi import FastAPI, HTTPException
+import zipfile
+from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from typing import List
 import pandas as pd
@@ -381,6 +383,35 @@ def predict_machine_for_minutes(macAddress: str, minutes: int):
 
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+    
+
+# end point to send zip file with new model and scaler
+# It will unzip the file, make new folder in model folder with name of zip file and save model and scaler in that folder
+# Will recieve zip file with model and scaler
+@app.post("/update_model")
+async def update_model(file: UploadFile = File(...)):
+    try:
+        # replace - with : in filename
+        file.filename = file.filename.replace("-", ":")
+
+        # Save the uploaded file
+        file_location = f"./{file.filename}"
+        with open(file_location, "wb") as f:
+            f.write(await file.read())
+
+        # Extract the contents of the ZIP file
+        extract_path = os.path.join("./Models", os.path.splitext(file.filename)[0])
+        os.makedirs(extract_path, exist_ok=True)
+        with zipfile.ZipFile(file_location, 'r') as zip_ref:
+            zip_ref.extractall(extract_path)
+
+        # Clean up the uploaded ZIP file
+        os.remove(file_location)
+
+        return JSONResponse(content={"message": "Model updated successfully"}, status_code=200)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
 
 
 # command
