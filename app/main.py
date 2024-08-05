@@ -20,10 +20,10 @@ from pytz import timezone as pytz_timezone
 app = FastAPI()
 
 # Load the model
-model = load_model('./Models/chenab_model.h5')
+model = load_model('./Models/Drill-14223-chenab_model.h5')
 
 # Load the scaler
-scaler = joblib.load('./Models/chenab_scaler.pkl')
+scaler = joblib.load('./Models/Drill-14223-chenab_scaler.pkl')
 
 column_names = ['CT1', 'CT2', 'CT3', 'CT_Avg',
                 'total_current', 'therm_temp', 'vibration']
@@ -55,6 +55,7 @@ def connect_mongo():
 
 # Define the input data model
 
+
 class DataRow(BaseModel):
     CT1: float
     CT2: float
@@ -70,6 +71,7 @@ class PredictionRequest(BaseModel):
     maintenance_date: str  # Date in MM/DD/YY format
 
 # Define the output data model
+
 
 class PredictionResponse(BaseModel):
     predicted: List[int]
@@ -111,13 +113,13 @@ def convert_time_string_to_datetime(time_string):
         return None
 
 
-def fetch_utilization_data(mac):
+def fetch_utilization_data(mac, minutes):
 
     # Connect to MongoDB
     db = connect_mongo()
 
     # Calculate the time 15 minutes ago
-    time_threshold = datetime.utcnow() - timedelta(minutes=15)
+    time_threshold = datetime.utcnow() - timedelta(minutes=minutes)
 
     # ------- Current Data -----------
 
@@ -140,7 +142,7 @@ def fetch_utilization_data(mac):
         # return msgType:missing and message:No On state data for last 15 minutes
         return {
             "msgType": "missing",
-            "message": "No On state CTS data for last 15 minutes"
+            "message": "No On state CTS data for given minutes"
         }
 
     # Using only CT1, CT2, CT3, CT_Avg, total_current, state, created_at
@@ -159,14 +161,14 @@ def fetch_utilization_data(mac):
 
     vibration_data = fetch_data_for_date_range(
         lab_vibration_collection, vibration_query)
-    
+
     print(vibration_data)
 
     if vibration_data.empty:
         print("No data found")
         return {
             "msgType": "missing",
-            "message": "No vibration data for last 15 minutes"
+            "message": "No vibration data for given minutes"
         }
 
     # Using only vibration, created_at
@@ -191,8 +193,8 @@ def fetch_utilization_data(mac):
         print("No data found")
         return {
             "msgType": "missing",
-            "message": "No temperature data for last 15 minutes"
-        }  
+            "message": "No temperature data for given minutes"
+        }
 
     # Using only therm_temp, created_at
     if not temperature_data.empty:
@@ -236,7 +238,6 @@ def fetch_utilization_data(mac):
     # Convert data to json format
     data = data.to_dict(orient='records')
 
-    
     return {
         "msgType": "success",
         "message": "Data saved successfully",
@@ -244,6 +245,69 @@ def fetch_utilization_data(mac):
         "file_name": file_name
     }
 
+
+# Prediction function
+def predict_data(input_data: pd.DataFrame, model, scaler, column_names, maintenance_date: str):
+    # Scale the input data
+    input_data[column_names] = scaler.transform(input_data[column_names])
+
+    # Make predictions
+    pred = model.predict(input_data)
+
+    # Convert the predictions to binary
+    pred = [1 if y >= 0.434683 else 0 for y in pred]
+
+
+    predicted = pred
+
+    # Shap explainer
+    explainer = shap.Explainer(model, input_data)
+    shap_values = explainer(input_data)
+
+    # Find the feature that caused each anomaly
+    if isinstance(shap_values, list):
+        shap_df = pd.DataFrame(np.abs(shap_values[1]), columns=column_names)
+    else:
+        shap_df = pd.DataFrame(
+            np.abs(shap_values.values), columns=column_names)
+
+    shap_df['feature_cause'] = shap_df.idxmax(axis=1)
+    fault_cause = shap_df['feature_cause'].tolist()
+
+    # Number of faulty predictions
+    faulty_predicted = pred.count(1)
+
+    # Get today's date
+    todays_date = datetime.now().strftime("%x")
+
+    # Parse the provided maintenance date
+    maintenance_date = datetime.strptime(maintenance_date, "%m/%d/%y").date()
+
+    # Calculate predicted maintenance date
+    pred_array = np.array(pred)
+    n = (pred_array == 1).sum()
+    days_to_subtract = n / 24 + 1
+    predicted_maintenance_date = maintenance_date - \
+        timedelta(days=days_to_subtract)
+    predicted_maintenance_date_str = predicted_maintenance_date.strftime("%x")
+
+    # Calculate degraded life of the machine
+    degraded_life = (24 - n) / 2400
+
+    # Calculate fault to active ratio ie number of 1's / number of input
+    falutToActiveRatio = faulty_predicted / len(pred)
+
+    return {
+        "predicted": predicted,
+        "fault_cause": fault_cause,
+        "faulty_predicted": faulty_predicted,
+        "todays_date": todays_date,
+        # Convert to string
+        "scheduled_maintenance_date": maintenance_date.strftime("%x"),
+        "predicted_maintenance_date": predicted_maintenance_date_str,
+        "degraded_life": degraded_life,
+        "falutToActiveRatio": falutToActiveRatio
+    }
 
 # ----------------------------- API Endpoints -----------------------------
 
@@ -255,84 +319,26 @@ def read_root():
 
 
 # predict point for sending input json data and get the prediction
-@app.post("/predict", response_model=PredictionResponse)
+@app.post("/predict_chenab", response_model=PredictionResponse)
 def predict(request: PredictionRequest):
     try:
         # Convert input data to DataFrame
         input_data = pd.DataFrame([item.dict() for item in request.data])
-        input_data[column_names] = scaler.transform(input_data[column_names])
 
-        # Make predictions
-        pred = model.predict(input_data)
-        pred = [1 if y >= 0.282485 else 0 for y in pred]
+        # Call helper function to make prediction and get response
+        response_data = predict_data(
+            input_data, model, scaler, column_names, request.maintenance_date)
 
-        predicted = pred
-
-        # Load explainer
-        # explainer = joblib.load('./Models/Drill-14223-chenab_explainer.pkl')
-
-        # Shap explainer
-        explainer = shap.Explainer(model, input_data)
-        shap_values = explainer(input_data)
-
-        # Find the feature that caused each anomaly
-        if isinstance(shap_values, list):
-            # If shap_values is a list (e.g., for binary classification), use the second element
-            shap_df = pd.DataFrame(
-                np.abs(shap_values[1]), columns=column_names)
-        else:
-            # If shap_values is already a 2D array
-            shap_df = pd.DataFrame(
-                np.abs(shap_values.values), columns=column_names)
-
-        # Add feature_cause column to the dataframe
-        shap_df['feature_cause'] = shap_df.idxmax(axis=1)
-        fault_cause = shap_df['feature_cause'].tolist()
-
-        # Number of faulty predictions
-        faulty_predicted = pred.count(1)
-
-        # Get today's date
-        todays_date = datetime.now().strftime("%x")
-
-        # Parse the provided maintenance date
-        maintenance_date = datetime.strptime(
-            request.maintenance_date, "%m/%d/%y").date()
-
-        # Calculate predicted maintenance date
-        pred_array = np.array(pred)
-        n = (pred_array == 1).sum()
-        days_to_subtract = n / 24 + 1
-        predicted_maintenance_date = maintenance_date - \
-            timedelta(days=days_to_subtract)
-        predicted_maintenance_date_str = predicted_maintenance_date.strftime(
-            "%x")
-
-        # Calculate degraded life of the machine
-        degraded_life = (24 - n) / 2400
-
-        # Calculate fault to active ratio ie number of 1's / number of input
-        falutToActiveRatio = faulty_predicted / len(pred)
-
-        return PredictionResponse(
-            predicted=predicted,
-            fault_cause=fault_cause,
-            faulty_predicted=faulty_predicted,
-            todays_date=todays_date,
-            scheduled_maintenance_date=request.maintenance_date,
-            predicted_maintenance_date=predicted_maintenance_date_str,
-            degraded_life=degraded_life,
-            falutToActiveRatio=falutToActiveRatio
-        )
+        return PredictionResponse(**response_data)
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
 
-# get last 15 minutes data to csv file
-@app.get("/{macAddress}/get_interval_data")
-def get_interval_data(macAddress: str):
+# get last minutes data to csv file
+@app.get("/{macAddress}/{minutes}/get_interval_data")
+def get_interval_data(macAddress: str, minutes: int):
     try:
-        returnData = fetch_utilization_data(macAddress)
+        returnData = fetch_utilization_data(macAddress, minutes)
         if returnData.get("msgType") == "missing":
             return {"message": returnData.get("message")}
         return {"message": f"Data: {returnData}"}
@@ -340,10 +346,41 @@ def get_interval_data(macAddress: str):
         raise HTTPException(status_code=400, detail=str(e))
 
 
+# Run prediction on the machine on given minutes data
+@app.get("/{macAddress}/{minutes}/predict_machine_for_minutes")
+def predict_machine_for_minutes(macAddress: str, minutes: int):
+    try:
+        returnData = fetch_utilization_data(macAddress, minutes)
+        if returnData.get("msgType") == "missing":
+            return {"message": returnData.get("message")}
 
+        data = returnData.get("data")
+        input_data = pd.DataFrame(data)
 
+        # Using only necessary columns
+        # CT1: float
+        # CT2: float
+        # CT3: float
+        # CT_Avg: float
+        # total_current: float
+        # therm_temp: float
+        # vibration: float
 
+        input_data = input_data[[
+            "CT1", "CT2", "CT3", "CT_Avg", "total_current", "therm_temp", "vibration"]]
+        
+        # csv
+        input_data.to_csv("chenab_input_data.csv", index=False)
 
+        # Call helper function to make prediction and get response
+
+        response_data = predict_data(
+            input_data, model, scaler, column_names, "01/01/21")
+
+        return {"message": f"Data: {response_data}"}
+
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 # command
