@@ -270,7 +270,7 @@ def predict_data(input_data: pd.DataFrame, column_names, maintenance_date: str, 
     pred = model.predict(input_data)
 
     # Convert the predictions to binary
-    pred = [1 if y >= 0.434683 else 0 for y in pred]
+    pred = [1 if y >= 0.5 else 0 for y in pred]
 
     predicted = pred
 
@@ -404,8 +404,6 @@ def predict_machine_for_minutes(macAddress: str, minutes: int):
 @app.post("/update_model")
 async def update_model(file: UploadFile = File(...)):
     try:
-        # replace - with : in filename
-        file.filename = file.filename.replace("-", ":")
 
         # Save the uploaded file
         file_location = f"./{file.filename}"
@@ -425,6 +423,23 @@ async def update_model(file: UploadFile = File(...)):
         file_name_string = os.path.splitext(file.filename)[0]
 
         return JSONResponse(content={"message": f"Model updated successfully with name {file_name_string}"}, status_code=200)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    
+
+# end point to list models in model folder
+
+@app.get("/list_models")
+async def list_models():
+    try:
+        # List all the directories in the models folder
+        model_dir = os.path.join(os.getcwd(), "Models")
+        models = os.listdir(model_dir)
+
+        # remove hidden files
+        models = [model for model in models if not model.startswith(".")]
+
+        return JSONResponse(content={"message": f"Models: {models}"}, status_code=200)
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
