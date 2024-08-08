@@ -61,11 +61,17 @@ cd wiser-chenab-model-container
 python -m venv .venv
 ```
 
-4. Install dependencies
+4. Select env
+```bash
+source .venv/bin/activate
+```
+
+5. Install dependencies
 ```bash
 pip install -r requirements.txt --no-cache-dir
 ```
-4. Run Fast-API
+
+6. Run Fast-API
 ```bash
 fastapi run app/main.py --port 8000 --reload
 ```
@@ -89,9 +95,26 @@ Note:
 
 ### 1. Without Docker
 
+1. Make .venv
+```bash
+python -m venv .venv
+```
+
+2. Move to venv
+```bash
+source .venv/bin/activate
+```
+
+3. Install requirements
+```bash
+pip install -r requirements.txt --no-cache-dir 
+```
+
+4. Run app
 ```bash
 nohup fastapi run app/main.py --port 8000
 ```
+
 ### 2. With Docker
 
 1. Build image
