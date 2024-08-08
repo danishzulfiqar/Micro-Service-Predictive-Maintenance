@@ -234,8 +234,8 @@ def fetch_utilization_data(mac, minutes):
         {"nodeId": ObjectId(node_id)}, projection={"machineName": 1, "_id": 0})
     machine_name = machine_data.get("machineName")
 
-    file_name = f"{machine_name}.csv"
-    data.to_csv(file_name, index=False)
+    file_name = f"input.csv"
+    # data.to_csv(file_name, index=False)
 
     # Convert data to json format
     data = data.to_dict(orient='records')
@@ -250,9 +250,7 @@ def fetch_utilization_data(mac, minutes):
 
 # Prediction function
 def predict_data(input_data: pd.DataFrame, column_names, maintenance_date: str, macAddress: str):
-
     # Loading the model and scaler
-    # Location macAddress replace : with -
     macAddressDir = macAddress.replace(":", "-")
     print(macAddressDir)
 
@@ -268,25 +266,31 @@ def predict_data(input_data: pd.DataFrame, column_names, maintenance_date: str, 
 
     # Make predictions
     pred = model.predict(input_data)
-
-    # Convert the predictions to binary
     pred = [1 if y >= 0.5 else 0 for y in pred]
 
-    predicted = pred
+    # Filter data where prediction is 1 (anomaly)
+    anomaly_data = input_data[np.array(pred) == 1]
 
-    # Shap explainer
-    explainer = shap.Explainer(model, input_data)
-    shap_values = explainer(input_data)
+    # Initialize the SHAP explainer and fault_cause list
+    fault_cause = ["NULL"] * len(pred)  # Default to 0 for all entries
 
-    # Find the feature that caused each anomaly
-    if isinstance(shap_values, list):
-        shap_df = pd.DataFrame(np.abs(shap_values[1]), columns=column_names)
-    else:
-        shap_df = pd.DataFrame(
-            np.abs(shap_values.values), columns=column_names)
+    if not anomaly_data.empty:
+        explainer = shap.Explainer(model, input_data)
+        shap_values = explainer(anomaly_data)
 
-    shap_df['feature_cause'] = shap_df.idxmax(axis=1)
-    fault_cause = shap_df['feature_cause'].tolist()
+        # Process SHAP values
+        if isinstance(shap_values, list):
+            shap_df = pd.DataFrame(
+                np.abs(shap_values[1]), columns=column_names)
+        else:
+            shap_df = pd.DataFrame(
+                np.abs(shap_values.values), columns=column_names)
+
+        shap_df['feature_cause'] = shap_df.idxmax(axis=1)
+        # Map the feature causes back to the original predictions
+        anomaly_indices = np.where(np.array(pred) == 1)[0]
+        for idx, anomaly_idx in enumerate(anomaly_indices):
+            fault_cause[anomaly_idx] = shap_df['feature_cause'].iloc[idx]
 
     # Number of faulty predictions
     faulty_predicted = pred.count(1)
@@ -312,16 +316,16 @@ def predict_data(input_data: pd.DataFrame, column_names, maintenance_date: str, 
     falutToActiveRatio = faulty_predicted / len(pred)
 
     return {
-        "predicted": predicted,
+        "predicted": pred,
         "fault_cause": fault_cause,
         "faulty_predicted": faulty_predicted,
         "todays_date": todays_date,
-        # Convert to string
         "scheduled_maintenance_date": maintenance_date.strftime("%x"),
         "predicted_maintenance_date": predicted_maintenance_date_str,
         "degraded_life": degraded_life,
         "falutToActiveRatio": falutToActiveRatio
     }
+
 
 # ----------------------------- API Endpoints -----------------------------
 
@@ -384,7 +388,7 @@ def predict_machine_for_minutes(macAddress: str, minutes: int):
             "CT1", "CT2", "CT3", "CT_Avg", "total_current", "therm_temp", "vibration"]]
 
         # csv
-        input_data.to_csv("chenab_input_data.csv", index=False)
+        # input_data.to_csv("chenab_input_data.csv", index=False)
 
         # Call helper function to make prediction and get response
 
@@ -395,7 +399,6 @@ def predict_machine_for_minutes(macAddress: str, minutes: int):
 
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
-
 
 
 # end point to send zip file with new model and scaler
@@ -425,7 +428,7 @@ async def update_model(file: UploadFile = File(...)):
         return JSONResponse(content={"message": f"Model updated successfully with name {file_name_string}"}, status_code=200)
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
-    
+
 
 # end point to list models in model folder
 
