@@ -235,7 +235,7 @@ def fetch_utilization_data(mac, minutes):
     machine_name = machine_data.get("machineName")
 
     file_name = f"input.csv"
-    # data.to_csv(file_name, index=False)
+    data.to_csv(file_name, index=False)
 
     # Convert data to json format
     data = data.to_dict(orient='records')
