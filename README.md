@@ -85,14 +85,14 @@ Note:
 2. Change tensorflow to tensorflow-cpu in requiremnts.text for deployment.
 
 
-### Running Server
+## Running Server
 
-## 1. Without Docker
+### 1. Without Docker
 
 ```bash
 nohup fastapi run app/main.py --port 8000
 ```
-## 2. With Docker
+### 2. With Docker
 
 1. Build image
 ```bash
