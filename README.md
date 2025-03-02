@@ -2,7 +2,8 @@
 
 ### Technical Details
 
-Predictive maintenance backend server for model inferance upload and update.
+Predictive maintenance backend server for model inferance, upload and update.
+
 
 ### Techstack
 
@@ -14,7 +15,7 @@ Predictive maintenance backend server for model inferance upload and update.
 - Numpy
 - Pandas
 
-## Usage
+## Running the code
 
 ### Python version: Python 3.10.12 to 3.10.14
 
@@ -22,12 +23,12 @@ Predictive maintenance backend server for model inferance upload and update.
 
 1. Clone the repository
 ```bash
-git clone https://github.com/danishzulfiqar/wiser-chenab-model-container.git
+git clone https://github.com/danishzulfiqar/Micro-Service-Predictive-Maintenance.git
 ```
 
 2. Change directory
 ```bash
-cd wiser-chenab-model-container
+cd Micro-Service-Predictive-Maintenance
 ```
 
 3. Make image
@@ -48,12 +49,12 @@ http://localhost:8000
 
 1. Clone the repository
 ```bash
-git clone https://github.com/danishzulfiqar/wiser-chenab-model-container.git
+git clone https://github.com/danishzulfiqar/Micro-Service-Predictive-Maintenance.git
 ```
 
 2. Change directory
 ```bash
-cd wiser-chenab-model-container
+cd Micro-Service-Predictive-Maintenance
 ```
 
 3. Make env
@@ -126,3 +127,16 @@ docker build -t api .
 ```bash
 docker run --name pred-men -p 8000:8000 api
 ```
+
+## Microservice Usage
+
+### Documentation and Routes
+
+1. Open the browser and paste the link below
+```bash
+http://localhost:8000/docs
+```
+
+### Note:
+
+For development of models compatible with this microservice, please refer: [Predictive-Maintenance-Model-Training](https://github.com/danishzulfiqar/Predictive-Maintenance-Model-Training.git)
